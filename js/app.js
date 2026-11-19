@@ -18,6 +18,7 @@ const TABS = [
 
 let current = null;   // { route, element, cleanup }
 let menuOpen = false;
+let showSeq = 0;      // only the newest of overlapping renders is kept
 
 function routeFromHash() {
   const name = location.hash.replace("#", "");
@@ -32,6 +33,7 @@ export function navigate(route) {
 /** Each tab lives in its own scroll container; switching cross-fades instead of rebuilding the page. */
 async function show(route, { force = false } = {}) {
   if (!force && current && current.route === route) return;
+  const seq = ++showSeq;
   const tab = TABS.find((x) => x.route === route);
   const app = $("#app");
   const element = document.createElement("main");
@@ -42,8 +44,15 @@ async function show(route, { force = false } = {}) {
   element.append(inner);
   app.append(element);
 
-  const previous = current;
   const cleanup = await tab.render(inner, { navigate, refresh: () => show(route, { force: true }) });
+  // Rendering is async (it reads the database). If another show() started meanwhile,
+  // this one is stale: drop it rather than leave a second copy of the screen behind.
+  if (seq !== showSeq) {
+    cleanup && cleanup();
+    element.remove();
+    return;
+  }
+  const previous = current;
   current = { route, element, cleanup };
   if (previous && previous.route === route) element.scrollTop = previous.element.scrollTop;
   requestAnimationFrame(() => { element.style.opacity = "1"; });
@@ -52,7 +61,21 @@ async function show(route, { force = false } = {}) {
     previous.cleanup && previous.cleanup();
     setTimeout(() => previous.element.remove(), force ? 0 : 230);
   }
+  for (const stray of [...app.children]) {
+    if (stray !== element && (!previous || stray !== previous.element)) stray.remove();
+  }
   renderTabbar();
+}
+
+/** Several saves in a row (e.g. six positions) cause one re-render, not six. */
+let refreshQueued = false;
+function refreshCurrent() {
+  if (refreshQueued) return;
+  refreshQueued = true;
+  setTimeout(() => {
+    refreshQueued = false;
+    if (current) show(current.route, { force: true });
+  }, 60);
 }
 
 function renderTabbar() {
@@ -126,8 +149,8 @@ async function boot() {
   const hideSplash = splash();
   window.addEventListener("hashchange", () => { closeMenu(); show(routeFromHash()); });
   // Re-render the visible tab when data changes elsewhere (a save in the measure stage, an import).
-  store.onChange(() => current && show(current.route, { force: true }));
-  onLanguageChange(() => current && show(current.route, { force: true }));
+  store.onChange(refreshCurrent);
+  onLanguageChange(refreshCurrent);
 
   await show(routeFromHash());
   setTimeout(() => {

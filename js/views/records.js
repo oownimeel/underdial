@@ -10,6 +10,8 @@ import { positionLabel } from "./measure.js";
 import { openResultCard } from "../card.js";
 
 let shownMonth = null;
+const PAGE = 50;          // records listed at first; "show more" adds another page
+let listLimit = PAGE;
 
 function calendar(month, measurements, watchesById) {
   const first = new Date(month.getFullYear(), month.getMonth(), 1);
@@ -55,7 +57,7 @@ export async function renderRecords(root) {
     </section>
     <section class="stack rise" style="animation-delay:60ms">
       <span class="eyebrow">${esc(t("전체 기록"))}</span>
-      ${measurements.length ? `<div class="list">${measurements.map((m) => {
+      ${measurements.length ? `<div class="list">${measurements.slice(0, listLimit).map((m) => {
         const w = watchesById.get(m.watchId);
         return `<button class="list-row" data-record="${m.id}">
           ${thumb(w)}
@@ -63,13 +65,21 @@ export async function renderRecords(root) {
           <span class="rec-rate ${m.qualityLevel > 0 ? "" : "muted"}">${formatRate(m.rate)} s/d</span>
           ${icon("chevron", 'class="chev"')}
         </button>`;
-      }).join("")}</div>` : `<div class="card empty"><p>${esc(t("아직 저장된 측정이 없습니다."))}</p></div>`}
+      }).join("")}</div>
+      ${measurements.length > listLimit ? `<button class="btn btn-secondary btn-block" data-more>${esc(t("더 보기 ({n}개 남음)", { n: measurements.length - listLimit }))}</button>` : ""}`
+      : `<div class="card empty"><p>${esc(t("아직 저장된 측정이 없습니다."))}</p></div>`}
     </section>`;
 
   paintThumbs(root);
   root.querySelector("[data-prev]").onclick = () => { shownMonth = new Date(shownMonth.getFullYear(), shownMonth.getMonth() - 1, 1); renderRecords(root); };
   root.querySelector("[data-next]").onclick = () => { shownMonth = new Date(shownMonth.getFullYear(), shownMonth.getMonth() + 1, 1); renderRecords(root); };
   root.querySelectorAll("[data-record]").forEach((el) => { el.onclick = () => openRecordDetail(el.dataset.record); });
+  const more = root.querySelector("[data-more]");
+  if (more) more.onclick = () => {
+    const scroller = root.closest(".screen"), top = scroller ? scroller.scrollTop : 0;
+    listLimit += PAGE * 2;
+    renderRecords(root).then(() => { if (scroller) scroller.scrollTop = top; });
+  };
 }
 
 export function openRecordDetail(id) {

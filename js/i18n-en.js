@@ -157,6 +157,7 @@ export const EN = {
   "측정": "Measure",
   "측정 기록": "Measurements",
   "측정 횟수": "Measurements",
+  "더 보기 ({n}개 남음)": "Show more ({n} left)",
   "측정 기록도 함께 삭제되며 되돌릴 수 없습니다.": "Its measurements are deleted too. This can't be undone.",
   "측정 방법 다시 보기": "How to measure",
   "측정 소리를 WAV 파일로 내보내 다른 기기나 앱과 비교할 수 있습니다.": "Export a measurement as a WAV file to compare it with another device or app.",

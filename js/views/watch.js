@@ -180,7 +180,9 @@ export function openEditWatch(existing, { onSaved } = {}) {
       };
     });
     body.querySelector("[data-cancel]").onclick = close;
+    let saving = false;   // a quick double tap must not add the watch twice
     body.querySelector("[data-save]").onclick = async () => {
+      if (saving) return;
       const name = body.querySelector("#w-name").value.trim();
       const liftText = body.querySelector("#w-lift").value.trim().replace(",", ".");
       const lift = liftText ? Number(liftText) : null;
@@ -190,6 +192,7 @@ export function openEditWatch(existing, { onSaved } = {}) {
         : lift != null && !(lift >= 30 && lift <= 70) ? t("리프트 앵글은 30°에서 70° 사이로 입력해 주세요.")
         : null;
       if (problem) { error.textContent = problem; error.hidden = false; return; }
+      saving = true;
       const saved = await store.saveWatch({
         ...(existing || {}),
         name,

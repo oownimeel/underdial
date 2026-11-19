@@ -10,6 +10,7 @@ import { openClockCard } from "./records.js";
 import { startMeasure } from "../app.js";
 
 const RECENT = 5;
+const MAX_DOTS = 9;   // beyond this, a "3 / 30" counter replaces the dots
 
 export function summarize(watch, measurements) {
   const own = measurements.filter((m) => m.watchId === watch.id);
@@ -107,7 +108,8 @@ export async function renderHome(root) {
     const start = Math.max(0, watches.findIndex((w) => w.id === prefs.lastWatchId));
     root.innerHTML = `${header}
       <div class="watch-pager" data-pager>${watches.map((w, i) => page(w, measurements, i)).join("")}</div>
-      ${watches.length > 1 ? `<div class="dots" data-dots>${watches.map((_, i) => `<i class="${i === start ? "on" : ""}"></i>`).join("")}</div>` : ""}`;
+      ${watches.length > MAX_DOTS ? `<div class="dots count num" data-count aria-live="polite">${start + 1} / ${watches.length}</div>`
+        : watches.length > 1 ? `<div class="dots" data-dots>${watches.map((_, i) => `<i class="${i === start ? "on" : ""}"></i>`).join("")}</div>` : ""}`;
     const pager = root.querySelector("[data-pager]");
     requestAnimationFrame(() => { pager.scrollLeft = start * pager.clientWidth; });
     let settle = null;
@@ -116,6 +118,8 @@ export async function renderHome(root) {
       settle = setTimeout(() => {
         const index = Math.round(pager.scrollLeft / Math.max(1, pager.clientWidth));
         root.querySelectorAll("[data-dots] i").forEach((dot, i) => dot.classList.toggle("on", i === index));
+        const count = root.querySelector("[data-count]");
+        if (count) count.textContent = `${index + 1} / ${watches.length}`;
         if (watches[index]) store.setPrefs({ lastWatchId: watches[index].id });
       }, 120);
     }, { passive: true });

@@ -63,13 +63,24 @@ export const newId = () => (crypto.randomUUID ? crypto.randomUUID() : String(Dat
 
 // MARK: Watches
 
+// Every read from IndexedDB returns a new Blob, and each would get a new object URL that
+// is never freed. Handing back the same Blob while the photo is unchanged keeps one URL per photo.
+const photoCache = new Map();
+function stablePhoto(w) {
+  if (!w || !w.photo) return w;
+  const cached = photoCache.get(w.id);
+  if (cached && cached.size === w.photo.size && cached.type === w.photo.type) w.photo = cached;
+  else photoCache.set(w.id, w.photo);
+  return w;
+}
+
 export async function watches() {
   const all = await tx(["watches"], "readonly", (t) => done(t.objectStore("watches").getAll()));
-  return all.sort((a, b) => a.createdAt - b.createdAt);
+  return all.map(stablePhoto).sort((a, b) => a.createdAt - b.createdAt);
 }
 
 export async function watch(id) {
-  return tx(["watches"], "readonly", (t) => done(t.objectStore("watches").get(id)));
+  return stablePhoto(await tx(["watches"], "readonly", (t) => done(t.objectStore("watches").get(id))));
 }
 
 export async function saveWatch(record) {

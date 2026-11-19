@@ -170,6 +170,10 @@ img { max-width: 100%; display: block; }
 select.input { appearance: none; background-image: linear-gradient(45deg, transparent 50%, var(--text-2) 50%), linear-gradient(135deg, var(--text-2) 50%, transparent 50%); background-position: calc(100% - 20px) 50%, calc(100% - 15px) 50%; background-size: 5px 5px; background-repeat: no-repeat; padding-right: 36px; }
 
 .chips { display: flex; flex-wrap: wrap; gap: 8px; }
+/* One sideways-scrolling row, for lists that can grow long (the watch picker). */
+.chips.scroller { position: relative; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; margin: 0 -4px; padding: 2px 4px; scroll-padding: 0 4px; }
+.chips.scroller::-webkit-scrollbar { display: none; }
+.chips.scroller > * { flex: 0 0 auto; }
 .chip {
   border: 1px solid var(--relief); background: var(--surface); border-radius: 999px; padding: 8px 14px; font-size: 14px;
 }
@@ -220,7 +224,7 @@ select.input { appearance: none; background-image: linear-gradient(45deg, transp
 
 .home-top { display: flex; justify-content: space-between; align-items: center; }
 .wordmark { font-family: var(--script); font-size: 34px; line-height: 1; padding: 6px 14px 2px; border-radius: 999px; }
-.watch-pager { display: flex; overflow-x: auto; scroll-snap-type: x mandatory; gap: 12px; margin: 0 calc(-1 * var(--gutter-r)) 0 calc(-1 * var(--gutter-l)); padding: 0 var(--gutter-r) 4px var(--gutter-l); scrollbar-width: none; }
+.watch-pager { display: flex; overflow-x: auto; scroll-snap-type: x mandatory; gap: calc(var(--gutter-l) + var(--gutter-r)); margin: 0 calc(-1 * var(--gutter-r)) 0 calc(-1 * var(--gutter-l)); padding: 0 var(--gutter-r) 4px var(--gutter-l); scrollbar-width: none; }
 .watch-pager::-webkit-scrollbar { display: none; }
 .watch-page { scroll-snap-align: center; flex: 0 0 100%; display: grid; gap: 16px; min-width: 0; }
 .hero {
@@ -238,6 +242,7 @@ select.input { appearance: none; background-image: linear-gradient(45deg, transp
 .dots { display: flex; justify-content: center; gap: 6px; }
 .dots i { width: 6px; height: 6px; border-radius: 50%; background: var(--relief); transition: all 240ms ease; }
 .dots i.on { width: 18px; border-radius: 3px; background: var(--ink); }
+.dots.count { font-size: 13px; color: var(--text-2); letter-spacing: 0.04em; font-variant-numeric: tabular-nums; }
 
 .week { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; text-align: center; }
 .week .d { display: grid; gap: 6px; justify-items: center; font-size: 11px; color: var(--text-2); }
@@ -300,8 +305,9 @@ select.input { appearance: none; background-image: linear-gradient(45deg, transp
 .stage-head .wordmark { font-size: 28px; padding: 0; color: var(--stage-text); }
 .stage .icon-btn { background: rgba(255,255,255,0.12); color: var(--stage-text); }
 .stage-main { flex: 1; min-height: 0; display: grid; place-items: center; position: relative; z-index: 1; max-width: 560px; width: 100%; margin: 0 auto; }
-.gauge { position: relative; height: min(100%, 82vw, 380px); aspect-ratio: 1; max-width: 100%; }
-.stage-main { padding: 10px 0 18px; }
+.stage-main { padding: 10px 0 18px; container-type: size; }
+/* Sized from the container on both axes: WebKit mis-centres a grid item whose width comes from aspect-ratio. */
+.gauge { position: relative; width: min(100cqw, 100cqh, 82vw, 380px); height: min(100cqw, 100cqh, 82vw, 380px); }
 .gauge canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
 .gauge-text { position: absolute; inset: 0; display: grid; place-content: center; text-align: center; gap: 4px; padding: 0 18%; }
 .gauge-value { font: 300 clamp(40px, 13vw, 80px)/1 var(--num); letter-spacing: -0.03em; font-variant-numeric: tabular-nums; white-space: nowrap; }

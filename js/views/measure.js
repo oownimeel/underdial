@@ -230,17 +230,30 @@ class Stage {
     });
   }
 
+  // `saving` stops a quick double tap from storing the same result twice.
   async save() {
-    if (!(await this.ensureWatch())) return;
-    this.saved = await store.saveMeasurement(this.measurementRecord(this.result, this.position));
-    store.setPrefs({ lastWatchId: this.watchId });
+    if (this.saving || this.saved) return;
+    this.saving = true;
+    try {
+      if (!(await this.ensureWatch())) return;
+      this.saved = await store.saveMeasurement(this.measurementRecord(this.result, this.position));
+      store.setPrefs({ lastWatchId: this.watchId });
+    } finally {
+      this.saving = false;
+    }
     this.render();
   }
 
   async saveAllPositions() {
-    if (!(await this.ensureWatch())) return;
-    for (const entry of this.positionResults.filter(Boolean)) {
-      if (entry.result.quality.level > 0) await store.saveMeasurement(this.measurementRecord(entry.result, entry.position));
+    if (this.saving) return;
+    this.saving = true;
+    try {
+      if (!(await this.ensureWatch())) return;
+      for (const entry of this.positionResults.filter(Boolean)) {
+        if (entry.result.quality.level > 0) await store.saveMeasurement(this.measurementRecord(entry.result, entry.position));
+      }
+    } finally {
+      this.saving = false;
     }
     store.setPrefs({ lastWatchId: this.watchId });
     toast(t("포지션 측정을 모두 저장했습니다."));
@@ -278,7 +291,8 @@ class Stage {
       fill = level;
       v = `${Math.round(level * 100)}%`;
       c = t("신호");
-      d = this.status && this.status.bph ? `${formatNumber(this.status.bph)} BPH` : "";
+      // A beat rate guessed from a weak signal is noise; show it only once the signal holds.
+      d = this.status && this.status.isSufficient && this.status.bph ? `${formatNumber(this.status.bph)} BPH` : "";
       pulseRate = this.status && this.status.isSufficient ? 1.2 : null;
       isLive = true;
     } else if (this.phase === "measuring") {
@@ -304,7 +318,7 @@ class Stage {
     if (this.watches.length === 0) {
       return `<div class="row between"><span class="caption">${esc(t("저장하려면 시계가 필요합니다."))}</span><button class="link-btn" data-new-watch>${esc(t("시계 추가"))}</button></div>`;
     }
-    return `<div class="field"><span class="label">${esc(t("시계"))}</span><div class="chips">${this.watches.map((w) =>
+    return `<div class="field"><span class="label">${esc(t("시계"))}</span><div class="chips scroller" data-watch-chips>${this.watches.map((w) =>
       `<button class="chip row" style="gap:8px;padding:5px 12px 5px 5px" data-watch="${w.id}" aria-pressed="${w.id === this.watchId}">${thumb(w, 26)}${esc(w.name)}</button>`).join("")}</div></div>`;
   }
 
@@ -400,6 +414,10 @@ class Stage {
         <div class="stage-card-scroll"><h2>${esc(t("측정하지 못했습니다"))}</h2><div class="notice">${esc(this.error || "")}</div></div>
         <button class="btn btn-primary btn-block" data-listen>${esc(t("다시 시도"))}</button>`;
     }
+    // The worker reports several times a second; rebuilding unchanged markup would
+    // swallow taps on the switch and buttons, so only replace it when it differs.
+    if (html === this.lastCardHTML) return;
+    this.lastCardHTML = html;
     card.innerHTML = html;
     this.bind(card);
   }
@@ -475,6 +493,16 @@ class Stage {
     card.querySelectorAll("[data-watch]").forEach((chip) => {
       chip.onclick = () => { this.watchId = chip.dataset.watch; this.render(); };
     });
+    // Keep the chosen watch in view in the sideways row (and keep the row where it was on re-render).
+    const row = card.querySelector("[data-watch-chips]");
+    if (row) {
+      if (this.chipScroll != null) row.scrollLeft = this.chipScroll;
+      const chosen = row.querySelector('[aria-pressed="true"]');
+      if (chosen && (chosen.offsetLeft < row.scrollLeft || chosen.offsetLeft + chosen.offsetWidth > row.scrollLeft + row.clientWidth)) {
+        row.scrollLeft = chosen.offsetLeft - 4;
+      }
+      row.onscroll = () => { this.chipScroll = row.scrollLeft; };
+    }
     card.querySelectorAll("[data-position]").forEach((chip) => {
       chip.onclick = () => { this.position = this.position === chip.dataset.position ? null : chip.dataset.position; this.render(); };
     });
