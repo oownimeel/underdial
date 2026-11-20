@@ -8,6 +8,7 @@ import { Microphone } from "../audio.js";
 import { amplitude, amplitudeGrade, beatErrorGrade, tapePoints, positionSummary, encodeWAV, DEFAULT_LIFT_ANGLE } from "../engine.js";
 import { openEditWatch, thumb, paintThumbs } from "./watch.js";
 import { openResultCard } from "../card.js";
+import { PlacementGuide, PLACEMENT_TEXT } from "../placement.js";
 
 export const POSITIONS = [
   { id: "dialUp", label: "다이얼 위" },
@@ -58,6 +59,7 @@ class Stage {
         <button class="icon-btn" data-close aria-label="${esc(t("닫기"))}">${icon("close")}</button>
       </div>
       <div class="stage-main">
+        <div class="placement" aria-hidden="true"><canvas></canvas></div>
         <div class="gauge">
           <canvas aria-hidden="true"></canvas>
           <div class="gauge-text"><div class="gauge-value num" data-value>–</div><div class="gauge-caption" data-caption></div><div class="gauge-detail" data-detail></div></div>
@@ -66,6 +68,7 @@ class Stage {
       <section class="stage-card"><div class="stage-card-inner" data-card></div></section>`;
     document.body.append(this.el);
     this.gauge = new MotionGauge(this.el.querySelector(".gauge canvas"));
+    this.placement = new PlacementGuide(this.el.querySelector(".placement canvas"));
     this.el.querySelector("[data-close]").onclick = () => this.close();
 
     this.onPop = () => this.close({ fromHistory: true });
@@ -187,6 +190,7 @@ class Stage {
   close({ fromHistory = false } = {}) {
     this.stopAudio();
     this.gauge.destroy();
+    this.placement.stop();
     window.removeEventListener("popstate", this.onPop);
     document.removeEventListener("visibilitychange", this.onHidden);
     this.el.style.transition = "opacity 220ms ease";
@@ -348,6 +352,10 @@ class Stage {
   }
 
   render() {
+    // Before listening, the stage shows how to hold the phone instead of an empty gauge.
+    this.el.dataset.phase = this.phase;
+    if (this.phase === "ready") { this.placement.setPosition(this.position); this.placement.start(); this.placement.redraw(); }
+    else this.placement.stop();
     this.renderGauge();
     const card = this.el.querySelector("[data-card]");
     const notice = this.notice ? `<div class="notice">${esc(this.notice)}</div>` : "";
@@ -363,7 +371,7 @@ class Stage {
           ${this.mode === "positions" && this.positionIndex > 0 ? `<div class="notice" style="background:var(--bg);color:var(--text)">${esc(t("시계를 다음 포지션으로 돌려 주세요."))}</div>` : ""}
           <ol class="guide-steps">
             <li>${esc(t("조용한 곳에서 시계를 손에 들거나 천 위에 놓습니다."))}</li>
-            <li>${esc(t("휴대폰 아래쪽 끝(마이크)을 시계 유리에 가볍게 붙입니다."))}</li>
+            <li>${esc(t(PLACEMENT_TEXT[this.position || "dialUp"]))}</li>
             <li>${esc(t("측정이 끝날 때까지 20초 동안 움직이지 마세요."))}</li>
           </ol>
           ${this.watchPicker()}

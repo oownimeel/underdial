@@ -1,5 +1,15 @@
 // English strings, keyed by the Korean source text.
 export const EN = {
+  "유리": "Crystal",
+  "뒷면": "Caseback",
+  "케이스": "Case",
+  "스마트폰": "Phone",
+  "시계를 다이얼이 위로 오게 눕히고, 스마트폰을 세워 아래쪽 끝을 유리에 가볍게 대 주세요.": "Lay the watch dial up, hold the phone upright and rest its bottom edge lightly on the crystal.",
+  "시계를 뒤집어 뒷면이 위로 오게 두고, 스마트폰 아래쪽 끝을 케이스 뒷면에 대 주세요.": "Turn the watch over so the caseback faces up, and rest the phone's bottom edge on the caseback.",
+  "시계를 세워 크라운이 위를 향하게 두고, 스마트폰 아래쪽 끝을 케이스 위쪽에 대 주세요.": "Stand the watch with the crown pointing up, and rest the phone's bottom edge on top of the case.",
+  "시계를 세워 크라운이 아래를 향하게 두고, 스마트폰 아래쪽 끝을 케이스 위쪽에 대 주세요.": "Stand the watch with the crown pointing down, and rest the phone's bottom edge on top of the case.",
+  "시계를 세워 크라운이 왼쪽을 향하게 두고, 스마트폰 아래쪽 끝을 케이스 위쪽에 대 주세요.": "Stand the watch with the crown pointing left, and rest the phone's bottom edge on top of the case.",
+  "시계를 세워 크라운이 오른쪽을 향하게 두고, 스마트폰 아래쪽 끝을 케이스 위쪽에 대 주세요.": "Stand the watch with the crown pointing right, and rest the phone's bottom edge on top of the case.",
   "'설치'를 누르면 앱 목록과 홈 화면에 Underdial이 생깁니다.": "Tap 'Install' and Underdial appears in your apps and on the home screen.",
   "'홈 화면에 추가' 또는 '앱 설치'를 누릅니다.": "Tap 'Add to Home screen' or 'Install app'.",
   "Amplitude와 Beat error의 색은 커뮤니티에서 통용되는 참고 기준이며 공식 규격이 아닙니다.": "Amplitude and beat error colors follow common community guidance, not an official standard.",

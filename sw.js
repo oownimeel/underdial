@@ -1,6 +1,6 @@
 // Offline cache: the app is a handful of static files, so all of them are cached
 // at install and served cache-first. Bump VERSION whenever any file changes.
-const VERSION = "underdial-v3";
+const VERSION = "underdial-v4";
 const FILES = [
   "./",
   "index.html",
@@ -15,6 +15,7 @@ const FILES = [
   "js/i18n-en.js",
   "js/ui.js",
   "js/dial.js",
+  "js/placement.js",
   "js/card.js",
   "js/views/home.js",
   "js/views/measure.js",
