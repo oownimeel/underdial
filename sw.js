@@ -1,6 +1,10 @@
 // Offline cache: the app is a handful of static files, so all of them are cached
 // at install and served cache-first. Bump VERSION whenever any file changes.
-const VERSION = "underdial-v4";
+// The beta site shares this origin with the released app, so each keeps to its own caches.
+const BETA = self.location.pathname.includes("/underdial-beta/");
+const PREFIX = BETA ? "underdial-beta-" : "underdial-";
+const VERSION = PREFIX + "v9";
+const ours = (key) => key.startsWith(PREFIX) && (BETA || !key.startsWith("underdial-beta-"));
 const FILES = [
   "./",
   "index.html",
@@ -16,6 +20,11 @@ const FILES = [
   "js/ui.js",
   "js/dial.js",
   "js/placement.js",
+  "js/zip.js",
+  "js/version.js",
+  "js/diagnose.js",
+  "js/interpret.js",
+  "js/log.js",
   "js/card.js",
   "js/views/home.js",
   "js/views/measure.js",
@@ -45,7 +54,7 @@ self.addEventListener("install", (event) => {
 self.addEventListener("activate", (event) => {
   event.waitUntil(
     caches.keys()
-      .then((keys) => Promise.all(keys.filter((key) => key !== VERSION).map((key) => caches.delete(key))))
+      .then((keys) => Promise.all(keys.filter((key) => ours(key) && key !== VERSION).map((key) => caches.delete(key))))
       .then(() => self.clients.claim()),
   );
 });

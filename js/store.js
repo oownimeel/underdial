@@ -5,8 +5,9 @@
 // recordings:   { id, date, watchName, seconds, sampleRate, blob }
 
 import { amplitude, DEFAULT_LIFT_ANGLE } from "./engine.js";
+import { STORAGE_NAME } from "./version.js";
 
-const DB_NAME = "underdial";
+const DB_NAME = STORAGE_NAME;
 const DB_VERSION = 1;
 let dbPromise = null;
 const listeners = new Set();
@@ -227,7 +228,7 @@ export async function storageEstimate() {
 
 // MARK: Preferences (small, per device)
 
-const PREFS_KEY = "underdial.prefs";
+export const PREFS_KEY = `${STORAGE_NAME}.prefs`;
 const defaults = { language: null, autoStart: false, onboarded: false, keepRecordings: true, lastWatchId: null, theme: "system" };
 
 export function prefs() {

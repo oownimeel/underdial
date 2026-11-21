@@ -9,6 +9,8 @@ import { renderSettings } from "./views/settings.js";
 import { openMeasure } from "./views/measure.js";
 import { openEditWatch } from "./views/watch.js";
 import { showOnboarding } from "./views/onboarding.js";
+import { installErrorLog } from "./log.js";
+import { IS_BETA } from "./version.js";
 
 const TABS = [
   { route: "home", icon: "watch", label: "시계", render: renderHome },
@@ -143,6 +145,13 @@ function splash() {
 }
 
 async function boot() {
+  installErrorLog();
+  if (IS_BETA) {
+    // The home-screen name is taken from the title, so the test copy is easy to tell apart.
+    document.title = "Underdial β";
+    document.querySelector('meta[name="apple-mobile-web-app-title"]')?.setAttribute("content", "Underdial β");
+    document.documentElement.dataset.channel = "beta";
+  }
   initLanguage();
   const theme = store.prefs().theme;
   if (theme === "light" || theme === "dark") document.documentElement.dataset.theme = theme;

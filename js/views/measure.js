@@ -9,6 +9,37 @@ import { amplitude, amplitudeGrade, beatErrorGrade, tapePoints, positionSummary,
 import { openEditWatch, thumb, paintThumbs } from "./watch.js";
 import { openResultCard } from "../card.js";
 import { PlacementGuide, PLACEMENT_TEXT } from "../placement.js";
+import { interpretationHTML } from "../interpret.js";
+import { logEvent } from "../log.js";
+
+// Why a measurement gave no result (see diagnose.js), and what to try next.
+const REASONS = {
+  quiet: { title: "소리가 거의 들리지 않아요", tips: [
+    "휴대폰 아래쪽 끝(마이크 구멍)을 시계 유리에 직접 붙여 주세요.",
+    "두꺼운 케이스, 이어폰이나 블루투스 마이크가 연결되어 있지 않은지 확인해 주세요.",
+    "시계가 멈춰 있지 않은지 확인해 주세요. 태엽을 감으면 다시 움직입니다."] },
+  noisy: { title: "주변 소음이 커요", tips: [
+    "대화, 음악, 에어컨 소리가 없는 조용한 곳에서 다시 측정해 주세요.",
+    "시계를 천이나 손바닥 위에 두면 책상에서 울리는 소리가 줄어듭니다."] },
+  knocked: { title: "부딪히거나 긁히는 소리가 들렸어요", tips: [
+    "휴대폰을 가볍게 댄 채 측정이 끝날 때까지 움직이지 마세요.",
+    "손으로 들고 있다면 시계를 천 위에 내려놓고 재 보세요."] },
+  quartz: { title: "쿼츠(배터리) 시계로 보여요", tips: [
+    "1초에 한 번씩 똑딱이는 소리가 들립니다.",
+    "Underdial은 기계식(오토매틱·수동) 시계만 측정할 수 있어요."] },
+  irregular: { title: "박동은 들리지만 일정하지 않아요", tips: [
+    "측정 중 휴대폰이나 시계가 움직였을 수 있어요. 고정한 채 다시 재 보세요.",
+    "휴대폰을 대는 위치를 조금 옮겨 가장 또렷하게 들리는 곳을 찾아 주세요.",
+    "태엽이 거의 풀렸다면 감은 뒤 다시 재 보세요."] },
+};
+
+const HINTS = {
+  quiet: "소리가 거의 들리지 않아요. 마이크(아래쪽 끝)를 시계에 직접 붙여 주세요.",
+  noisy: "주변 소음이 커요. 조용한 곳으로 옮겨 주세요.",
+  knocked: "움직이거나 부딪히는 소리가 들려요. 가만히 대 주세요.",
+  quartz: "1초 간격의 소리가 들려요. 쿼츠 시계는 측정할 수 없어요.",
+  irregular: "박동이 들려요. 위치를 조금씩 옮겨 가장 또렷한 곳을 찾아 주세요.",
+};
 
 export const POSITIONS = [
   { id: "dialUp", label: "다이얼 위" },
@@ -97,16 +128,21 @@ class Stage {
 
   async startListening() {
     this.error = null;
+    this.reason = null;
     this.notice = null;
     this.worker = new Worker(new URL("../analysis-worker.js", import.meta.url), { type: "module" });
     this.worker.onmessage = (event) => this.onWorker(event.data);
-    this.worker.onerror = () => { this.fail(t("분석을 시작하지 못했습니다. 브라우저를 최신 버전으로 업데이트해 주세요.")); };
+    this.worker.onerror = (event) => {
+      logEvent("error", `worker: ${event && event.message || "failed to start"}`);
+      this.fail(t("분석을 시작하지 못했습니다. 브라우저를 최신 버전으로 업데이트해 주세요."));
+    };
     this.mic = new Microphone((samples) => this.worker && this.worker.postMessage({ type: "audio", samples }, [samples.buffer]));
     try {
       await this.mic.start();
     } catch (error) {
       this.stopAudio();
       const denied = error && (error.name === "NotAllowedError" || error.name === "SecurityError");
+      logEvent("mic", `${error && error.name || "Error"}: ${error && error.message || ""}`);
       this.phase = denied ? "denied" : "failed";
       this.error = denied ? null : t("마이크를 열지 못했습니다. 다른 앱이 마이크를 쓰고 있지 않은지 확인해 주세요.");
       this.render();
@@ -159,17 +195,24 @@ class Stage {
     this.render();
   }
 
-  async onFinished({ result, error, samples, sampleRate }) {
+  async onFinished({ result, error, reason, samples, sampleRate }) {
     const settings = this.mic ? this.mic.settings : null;
     this.stopAudio();
     this.micLabel = settings && settings.label ? settings.label : null;
+    if (this.micLabel) store.setPrefs({ lastMic: this.micLabel });
     if (store.prefs().keepRecordings && samples && samples.length) {
       const blob = new Blob([encodeWAV(samples, sampleRate)], { type: "audio/wav" });
-      store.saveRecording({ watchName: this.watch ? this.watch.name : "", seconds: samples.length / sampleRate, sampleRate, blob }).catch(() => {});
+      store.saveRecording({ watchName: this.watch ? this.watch.name : "", seconds: samples.length / sampleRate, sampleRate, blob,
+        outcome: result ? "ok" : (reason || "failed"), rate: result ? result.rate : null }).catch(() => {});
     }
+    const seconds = samples && sampleRate ? Math.round(samples.length / sampleRate) : 0;
     if (!result) {
-      this.fail(t("녹음에서 시계 박동을 찾지 못했습니다. 시계를 더 가까이 대고 다시 측정해 주세요."));
+      logEvent("measure", `failed ${error || ""} → ${reason || "unknown"} · ${seconds}s`);
+      this.fail(t("녹음에서 시계 박동을 찾지 못했습니다. 시계를 더 가까이 대고 다시 측정해 주세요."), reason);
       return;
+    }
+    if (result.quality.level === 0) {
+      logEvent("measure", `unstable · ${result.bph} BPH · SNR ${result.quality.snrDB.toFixed(0)} dB · σ ${result.quality.residualSigmaMs.toFixed(2)} ms · ${seconds}s`);
     }
     this.result = result;
     this.saved = null;
@@ -180,14 +223,19 @@ class Stage {
     this.render();
   }
 
-  fail(message) {
+  fail(message, reason = null) {
     this.stopAudio();
     this.phase = "failed";
     this.error = message;
+    this.reason = REASONS[reason] ? reason : null;
     this.render();
   }
 
   close({ fromHistory = false } = {}) {
+    // Someone who gives up while the signal never settled is the failure we most need to hear about.
+    if (this.phase === "listening" && this.status && !this.status.isSufficient && this.status.seconds >= 15) {
+      logEvent("measure", `closed while listening · ${this.status.seconds}s · ${this.status.hint || "no hint"} · level ${Math.round(this.status.level * 100)}%`);
+    }
     this.stopAudio();
     this.gauge.destroy();
     this.placement.stop();
@@ -339,6 +387,18 @@ class Stage {
       : t("리프트 앵글 {angle}° (기본값) · 참고 기준이며 공식 규격이 아닙니다.", { angle });
   }
 
+  /** The plain-language reading under a final result. */
+  reading(result) {
+    if (!result || result.quality.level === 0) return "";
+    const amp = result.pulseSpanMs != null ? amplitude(this.liftAngle, result.bph, result.pulseSpanMs / 1000) : null;
+    return interpretationHTML({
+      rate: result.rate,
+      amplitude: amp != null && isFinite(amp) ? amp : null,
+      beatErrorMs: result.beatErrorMs,
+      liftAngleIsDefault: !(this.watch && this.watch.liftAngle),
+    });
+  }
+
   metrics(result, live = false) {
     const amp = result && result.pulseSpanMs != null ? amplitude(this.liftAngle, result.bph, result.pulseSpanMs / 1000) : null;
     const be = result ? result.beatErrorMs : null;
@@ -384,6 +444,7 @@ class Stage {
       const s = this.status;
       const pill = !s ? `<span class="status-pill wait">${esc(t("소리를 듣는 중…"))}</span>`
         : s.isSufficient ? `<span class="status-pill">${icon("check", 'width="16" height="16"')}${esc(t("신호 안정"))} · ${formatNumber(s.bph)} BPH</span>`
+        : s.hint && HINTS[s.hint] ? `<span class="status-pill wait hint">${esc(t(HINTS[s.hint]))}</span>`
         : s.level > 0 ? `<span class="status-pill wait">${esc(t("신호가 약합니다. 위치를 조금씩 옮겨 보세요."))}</span>`
         : `<span class="status-pill wait">${esc(t("시계를 찾는 중…"))}</span>`;
       const auto = store.prefs().autoStart;
@@ -419,7 +480,10 @@ class Stage {
         <button class="btn btn-primary btn-block" data-listen>${esc(t("다시 시도"))}</button>`;
     } else if (this.phase === "failed") {
       html = `
-        <div class="stage-card-scroll"><h2>${esc(t("측정하지 못했습니다"))}</h2><div class="notice">${esc(this.error || "")}</div></div>
+        <div class="stage-card-scroll"><h2>${esc(t("측정하지 못했습니다"))}</h2>${this.reason ? `
+          <div class="notice"><strong>${esc(t(REASONS[this.reason].title))}</strong></div>
+          <ol class="guide-steps">${REASONS[this.reason].tips.map((tip) => `<li>${esc(t(tip))}</li>`).join("")}</ol>`
+          : `<div class="notice">${esc(this.error || "")}</div>`}</div>
         <button class="btn btn-primary btn-block" data-listen>${esc(t("다시 시도"))}</button>`;
     }
     // The worker reports several times a second; rebuilding unchanged markup would
@@ -462,6 +526,7 @@ class Stage {
         <div class="stage-card-scroll">
           <div class="row between"><h2>${esc(t("완료"))}</h2>${badge}</div>
           ${this.metrics(r)}
+          ${this.reading(r)}
           <div class="status-pill">${icon("check", 'width="16" height="16"')}${esc(t("{no} 저장됨", { no: store.archiveNumber(this.saved.serial) }))}</div>
           <p class="caption" style="margin:0">${esc(t("같은 포지션끼리 비교해야 정확합니다. 기계식 시계는 자세에 따라 하루 수 초씩 달라집니다."))}</p>
         </div>
@@ -475,7 +540,7 @@ class Stage {
       <div class="stage-card-scroll">
         <div class="row between"><h2>${esc(level ? t("완료") : t("다시 측정해 주세요"))}</h2>${badge}</div>
         ${this.metrics(r)}
-        ${level === 0 ? `<div class="notice">${esc(t("신호가 고르지 않아 결과를 확정하지 않았습니다. 휴대폰을 시계 유리에 붙이고 움직이지 않게 다시 측정해 주세요."))}</div>` : ""}
+        ${level === 0 ? `<div class="notice">${esc(t("신호가 고르지 않아 결과를 확정하지 않았습니다. 휴대폰을 시계 유리에 붙이고 움직이지 않게 다시 측정해 주세요."))}</div>` : this.reading(r)}
         ${tape}
         ${this.watchPicker()}
         ${this.positionPicker()}

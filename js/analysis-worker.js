@@ -1,6 +1,7 @@
 // Runs analysis off the main thread, with the same loop as the iOS MeasurementEngine:
 // every 250 ms new audio is taken in; once a second the signal (or the interim result) is analyzed.
 import { LiveMeasurement, assessSignal, SIGNAL_WINDOW_SECONDS, defaultConfiguration } from "./engine.js";
+import { diagnose } from "./diagnose.js";
 
 const TICK_MS = 250;
 const TICKS_PER_ANALYSIS = 4;
@@ -16,6 +17,32 @@ let tickCount = 0;
 let lastInterim = null;
 let timer = null;
 let phase = "idle";
+// While the signal won't settle, the last few seconds are checked for the likely cause.
+const HINT_SECONDS = 8;
+const HINT_AFTER_SECONDS = 6;
+let hintChunks = [];
+let hintLength = 0;
+let unsettledTicks = 0;
+let hint = null;
+
+function pushHint(samples) {
+  hintChunks.push(samples.slice());
+  hintLength += samples.length;
+  while (hintChunks.length > 1 && hintLength - hintChunks[0].length >= HINT_SECONDS * sampleRate) {
+    hintLength -= hintChunks.shift().length;
+  }
+}
+
+function hintSamples() {
+  const out = new Float32Array(hintLength);
+  let offset = 0;
+  for (const chunk of hintChunks) { out.set(chunk, offset); offset += chunk.length; }
+  return out;
+}
+
+function resetHint() {
+  hintChunks = []; hintLength = 0; unsettledTicks = 0; hint = null;
+}
 
 function post(message) {
   self.postMessage(message);
@@ -55,7 +82,7 @@ function loop() {
     if (cancelRequested) {
       cancelRequested = false;
       measurement = null;
-      recentLength = 0;
+      recentLength = 0; resetHint();
       phase = "listening";
       post({ type: "listening", status: { level: 0, isSufficient: false, bph: null } });
       return;
@@ -71,7 +98,7 @@ function loop() {
       const update = measurement.update();
       if (update.signalLost) {
         measurement = null;
-        recentLength = 0;
+        recentLength = 0; resetHint();
         phase = "listening";
         post({ type: "notice", key: "lost" });
         post({ type: "listening", status: { level: 0, isSufficient: false, bph: null } });
@@ -83,7 +110,7 @@ function loop() {
     return;
   }
 
-  if (fresh) pushRecent(fresh);
+  if (fresh) { pushRecent(fresh); pushHint(fresh); }
 
   if (measureRequest) {
     const { duration, configuration } = measureRequest;
@@ -99,7 +126,13 @@ function loop() {
     const status = recentLength === recent.length
       ? assessSignal(recent, sampleRate)
       : { level: 0, isSufficient: false, bph: null };
-    post({ type: "listening", status });
+    if (status.isSufficient) { unsettledTicks = 0; hint = null; }
+    else {
+      unsettledTicks++;
+      // Every other second after the first few, so the hint doesn't flicker.
+      if (unsettledTicks >= HINT_AFTER_SECONDS && unsettledTicks % 2 === 0) hint = diagnose(hintSamples(), sampleRate);
+    }
+    post({ type: "listening", status: { ...status, hint, seconds: unsettledTicks } });
   }
 }
 
@@ -114,14 +147,15 @@ function finish() {
   timer = null;
   phase = "idle";
   const samples = measurement.samples.slice();
-  let result = null, error = null;
+  let result = null, error = null, reason = null;
   try {
     result = measurement.finish();
   } catch (e) {
     error = e.code || "failed";
+    try { reason = diagnose(samples, sampleRate); } catch { reason = null; }
   }
   measurement = null;
-  post({ type: "finished", result, error, samples, sampleRate }, );
+  post({ type: "finished", result, error, reason, samples, sampleRate });
 }
 
 self.onmessage = (event) => {
@@ -131,6 +165,7 @@ self.onmessage = (event) => {
       sampleRate = message.sampleRate;
       recent = new Float32Array(Math.trunc(SIGNAL_WINDOW_SECONDS * sampleRate));
       recentLength = 0;
+      resetHint();
       pending = [];
       measurement = null;
       measureRequest = null;

@@ -3,8 +3,9 @@
 import { t, locale } from "../i18n.js";
 import { esc, icon, formatRate, formatRelative, blobURL, grade } from "../ui.js";
 import * as store from "../store.js";
+import { IS_BETA } from "../version.js";
 import { paintDotDial } from "../dial.js";
-import { amplitudeGrade, beatErrorGrade } from "../engine.js";
+import { amplitudeGrade, beatErrorGrade, rateGrade } from "../engine.js";
 import { openWatchDetail, openWatchBox, openEditWatch } from "./watch.js";
 import { openClockCard } from "./records.js";
 import { startMeasure } from "../app.js";
@@ -23,7 +24,7 @@ export function summarize(watch, measurements) {
 
 export function overallGrade(m) {
   const amp = store.measurementAmplitude(m);
-  const grades = [beatErrorGrade(m.beatErrorMs)].concat(amp == null ? [] : [amplitudeGrade(amp)]);
+  const grades = [rateGrade(m.rate), beatErrorGrade(m.beatErrorMs)].concat(amp == null ? [] : [amplitudeGrade(amp)]);
   if (grades.includes("critical")) return "critical";
   return grades.includes("caution") ? "caution" : "good";
 }
@@ -91,7 +92,7 @@ export async function renderHome(root) {
   const header = `
     <header class="home-top">
       <button class="icon-btn glass" data-box aria-label="${esc(t("내 시계 보관함"))}">${icon("list")}</button>
-      <div class="wordmark glass" aria-label="Underdial">Underdial</div>
+      <div class="wordmark glass" aria-label="Underdial">Underdial${IS_BETA ? '<span class="beta-tag">BETA</span>' : ""}</div>
       <button class="icon-btn glass" data-clock aria-label="${esc(t("현재 시각"))}">${icon("clock")}</button>
     </header>`;
 

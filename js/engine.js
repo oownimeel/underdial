@@ -824,9 +824,17 @@ export function tapePoints(result) {
 
 /** Community rules of thumb: "good" | "caution" | "critical". */
 export function amplitudeGrade(value) {
-  if (value >= 270 && value <= 310) return "good";
+  if (value >= 250 && value <= 310) return "good";
   if (value < 220) return "critical";
   return "caution";
+}
+
+/** Daily rate: within ±10 s/d is fine for a mechanical watch, beyond ±20 wants a look. */
+export function rateGrade(rate) {
+  const a = Math.abs(rate);
+  if (a <= 10) return "good";
+  if (a <= 20) return "caution";
+  return "critical";
 }
 
 export function beatErrorGrade(ms) {

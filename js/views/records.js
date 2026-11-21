@@ -8,6 +8,7 @@ import { amplitudeGrade, beatErrorGrade } from "../engine.js";
 import { thumb, paintThumbs } from "./watch.js";
 import { positionLabel } from "./measure.js";
 import { openResultCard } from "../card.js";
+import { interpretationHTML } from "../interpret.js";
 
 let shownMonth = null;
 const PAGE = 50;          // records listed at first; "show more" adds another page
@@ -100,6 +101,12 @@ export function openRecordDetail(id) {
         <div class="metric"><span class="label">Amplitude</span><span class="value ${amp == null ? "" : amplitudeGrade(amp)}">${amp == null ? "–" : Math.round(amp)}<small>${amp == null ? "" : "°"}</small></span></div>
         <div class="metric"><span class="label">BPH</span><span class="value">${formatNumber(m.bph)}</span></div>
       </div>
+      ${m.qualityLevel > 0 ? interpretationHTML({
+        rate: m.rate,
+        amplitude: amp != null && isFinite(amp) ? amp : null,
+        beatErrorMs: m.beatErrorMs,
+        liftAngleIsDefault: !(w && w.liftAngle),
+      }) : ""}
       <div class="stack">
         <span class="eyebrow">${esc(t("측정 조건"))}</span>
         <div class="list">

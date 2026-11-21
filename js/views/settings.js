@@ -3,8 +3,11 @@ import { t, setLanguage, getLanguage } from "../i18n.js";
 import { esc, icon, sheet, confirmDelete, toast, formatDateTime, blobURL, shareOrDownload, isIOS, isStandalone } from "../ui.js";
 import * as store from "../store.js";
 import { showOnboarding, installHelp } from "./onboarding.js";
+import { APP_VERSION, IS_BETA, CHANGELOG } from "../version.js";
+import { feedbackReport, logEntries } from "../log.js";
+import { makeZip } from "../zip.js";
 
-export const APP_VERSION = "1.0 (web)";
+const versionText = () => `${APP_VERSION}${IS_BETA ? ` ${t("베타")}` : ""}`;
 
 function toggleRow(id, title, caption, checked) {
   return `<label class="list-row" for="${id}"><span class="grow"><span class="title" style="white-space:normal">${esc(title)}</span>${caption ? `<span class="caption">${esc(caption)}</span>` : ""}</span>
@@ -17,11 +20,16 @@ function linkRow(key, title, value = "") {
 
 export async function renderSettings(root) {
   const prefs = store.prefs();
-  const [persisted, estimate, recordings] = await Promise.all([
+  const [persisted, estimate, recordings, watches, measurements] = await Promise.all([
     navigator.storage && navigator.storage.persisted ? navigator.storage.persisted().catch(() => false) : Promise.resolve(false),
     store.storageEstimate(),
     store.recordings(),
+    store.watches(),
+    store.measurements(),
   ]);
+  // Built now, so the copy runs straight from the tap (Safari only allows that).
+  const report = () => feedbackReport({ watches: watches.length, measurements: measurements.length,
+    standalone: isStandalone(), language: getLanguage(), micLabel: store.prefs().lastMic });
   const standalone = isStandalone();
   const safe = persisted || standalone;
   const used = estimate && estimate.usage ? `${(estimate.usage / 1048576).toFixed(1)} MB` : "";
@@ -72,10 +80,19 @@ export async function renderSettings(root) {
       </div>
     </section>
 
+    <section class="stack rise" style="animation-delay:140ms">
+      <span class="eyebrow">${esc(t("도움"))}</span>
+      <div class="list">
+        ${linkRow("feedback", t("의견 보내기"), logEntries().length ? t("기록 {n}건", { n: logEntries().length }) : "")}
+        ${linkRow("version", t("버전 정보"), versionText())}
+      </div>
+    </section>
+
     <section class="stack rise" style="animation-delay:160ms">
       <span class="eyebrow">${esc(t("참고 기준"))}</span>
       <div class="list">
-        <div class="list-row"><span class="grow">Amplitude</span><span class="caption"><span class="good">270–310° ${esc(t("양호"))}</span> · <span class="critical">220° ${esc(t("미만 점검"))}</span></span></div>
+        <div class="list-row"><span class="grow">${esc(t("하루 오차"))}</span><span class="caption"><span class="good">±10 s/d ${esc(t("양호"))}</span> · <span class="critical">±20 s/d ${esc(t("초과 점검"))}</span></span></div>
+        <div class="list-row"><span class="grow">Amplitude</span><span class="caption"><span class="good">250–310° ${esc(t("양호"))}</span> · <span class="critical">220° ${esc(t("미만 점검"))}</span></span></div>
         <div class="list-row"><span class="grow">Beat error</span><span class="caption"><span class="good">≤0.3 ms ${esc(t("양호"))}</span> · <span class="critical">≥0.6 ms ${esc(t("점검"))}</span></span></div>
       </div>
       <span class="caption">${esc(t("커뮤니티에서 통용되는 값이며 공식 규격이 아닙니다."))}</span>
@@ -84,13 +101,15 @@ export async function renderSettings(root) {
     <section class="card rise" style="animation-delay:200ms;gap:8px">
       <div class="row">${icon("info", 'width="18" height="18" style="color:var(--text-2);flex:none"')}<strong>${esc(t("개인정보"))}</strong></div>
       <span class="caption" style="font-size:13px">${esc(t("측정한 소리와 사진은 이 기기 안에서만 처리되며, 계정이나 서버를 사용하지 않습니다. 이 웹사이트는 파일만 내려받고, 어떤 데이터도 서버로 보내지 않습니다."))}</span>
-      <span class="caption">Underdial ${esc(APP_VERSION)}</span>
+      <span class="caption">Underdial ${esc(versionText())}</span>
     </section>`;
 
   root.querySelector("#pref-auto").onchange = (e) => store.setPrefs({ autoStart: e.target.checked });
   root.querySelector("#pref-rec").onchange = (e) => store.setPrefs({ keepRecordings: e.target.checked });
   root.querySelector('[data-row="recordings"]').onclick = openRecordings;
   root.querySelector('[data-row="howto"]').onclick = () => showOnboarding();
+  root.querySelector('[data-row="feedback"]').onclick = () => openFeedback(report());
+  root.querySelector('[data-row="version"]').onclick = openVersions;
   root.querySelector("[data-install]")?.addEventListener("click", installHelp);
   root.querySelector('[data-row="export"]').onclick = async () => {
     const blob = await store.exportBackup();
@@ -122,12 +141,91 @@ export async function renderSettings(root) {
   });
 }
 
+/** Puts text on the clipboard; falls back to a selected text area on older browsers. */
+async function copyText(text) {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    const area = document.createElement("textarea");
+    area.value = text;
+    area.setAttribute("readonly", "");
+    area.style.cssText = "position:fixed;top:0;left:0;opacity:0";
+    document.body.append(area);
+    area.select();
+    area.setSelectionRange(0, text.length);
+    let ok = false;
+    try { ok = document.execCommand("copy"); } catch { ok = false; }
+    area.remove();
+    return ok;
+  }
+}
+
+function openFeedback(text) {
+  const copying = copyText(text);
+  sheet(async (body) => {
+    const copied = await copying;
+    body.innerHTML = `
+      <div class="${copied ? "status-pill" : "notice"}" style="justify-self:start">${copied ? icon("check", 'width="16" height="16"') : ""}${esc(copied ? t("오류 기록을 복사했어요") : t("자동 복사가 되지 않았어요. 아래 내용을 길게 눌러 복사해 주세요."))}</div>
+      <ol class="guide-steps">
+        <li>${esc(t("카페의 Underdial 게시글이나 댓글에 붙여넣어 주세요."))}</li>
+        <li>${esc(t("맨 아래에 어떤 상황이었는지 한두 줄 적어 주시면 고치는 데 큰 도움이 됩니다."))}</li>
+      </ol>
+      <pre class="report" tabindex="0">${esc(text)}</pre>
+      <span class="caption">${esc(t("기기 종류, 앱 버전, 최근 오류만 들어갑니다. 시계 이름, 사진, 녹음은 들어가지 않으며, 직접 붙여넣기 전에는 어디로도 전송되지 않습니다."))}</span>
+      <button class="btn btn-primary btn-block" data-copy>${esc(t("다시 복사"))}</button>`;
+    body.querySelector("[data-copy]").onclick = async () => {
+      toast(await copyText(text) ? t("복사했습니다.") : t("복사하지 못했습니다."));
+    };
+  }, { title: t("의견 보내기") });
+}
+
+function openVersions() {
+  sheet((body) => {
+    const en = getLanguage() === "en";
+    body.innerHTML = `
+      <div class="card" style="gap:4px">
+        <span class="eyebrow">${esc(t("현재 버전"))}</span>
+        <strong class="num" style="font-size:22px">Underdial ${esc(versionText())}</strong>
+        ${IS_BETA ? `<span class="caption">${esc(t("테스트용 베타입니다. 기록은 정식 버전과 따로 저장됩니다."))}</span>` : ""}
+      </div>
+      <div class="changelog">${CHANGELOG.map((entry) => `
+        <section>
+          <div class="row between"><strong class="num">${esc(entry.version)}${entry.version === APP_VERSION ? ` <span class="badge good">${esc(t("현재"))}</span>` : ""}</strong><span class="caption num">${esc(entry.date)}</span></div>
+          <ul>${(en ? entry.en : entry.ko).map((line) => `<li>${esc(line)}</li>`).join("")}</ul>
+        </section>`).join("")}</div>`;
+  }, { title: t("업데이트 내역") });
+}
+
+function fileStamp(ms) {
+  const d = new Date(ms), p = (n) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}`;
+}
+
+/** underdial-20261121-224012-Watch-ok.wav: time, watch and how the measurement ended. */
+function recordingName(r) {
+  const watch = (r.watchName || "").replace(/[\\/:*?"<>|]+/g, " ").trim().slice(0, 40);
+  return ["underdial", fileStamp(r.date), watch, r.outcome].filter(Boolean).join("-").replace(/\s+/g, "_") + ".wav";
+}
+
+async function recordingsZip(list) {
+  const lines = ["file\tdate\twatch\tseconds\toutcome\trate_s_per_day"];
+  const entries = list.slice().reverse().map((r) => {
+    const name = recordingName(r);
+    lines.push([name, new Date(r.date).toISOString(), r.watchName || "", r.seconds.toFixed(1), r.outcome || "", r.rate != null ? r.rate.toFixed(2) : ""].join("\t"));
+    return { name, blob: r.blob, date: r.date };
+  });
+  entries.unshift({ name: "index.tsv", blob: lines.join("\n") + "\n", date: Date.now() });
+  return makeZip(entries);
+}
+
 function openRecordings() {
   let audio = null;
   sheet(async (body) => {
     const draw = async () => {
       const list = await store.recordings();
-      body.innerHTML = list.length ? `<div class="list">${list.map((r) => `
+      body.innerHTML = list.length ? `<button class="btn btn-primary btn-block" data-all disabled>${icon("download")}${esc(t("전체 내보내기 준비 중…"))}</button>
+        <div class="list">${list.map((r) => `
         <div class="list-row">
           <button class="icon-btn" style="background:var(--relief)" data-play="${r.id}" aria-label="${esc(t("재생"))}">${icon("play")}</button>
           <span class="grow"><span class="title">${esc(r.watchName || t("시계 미지정"))}</span><span class="caption">${esc(formatDateTime(r.date))} · ${Math.round(r.seconds)}${esc(t("초"))}</span></span>
@@ -136,6 +234,16 @@ function openRecordings() {
         </div>`).join("")}</div><p class="caption" style="margin:0">${esc(t("측정 소리를 WAV 파일로 내보내 다른 기기나 앱과 비교할 수 있습니다."))}</p>`
         : `<div class="card empty"><p>${esc(t("저장된 녹음 파일이 없습니다."))}</p></div>`;
       const find = (id) => list.find((r) => r.id === id);
+      const all = body.querySelector("[data-all]");
+      if (all) {
+        // Built ahead of the tap: Safari only allows sharing straight from a tap.
+        recordingsZip(list).then((zip) => {
+          if (!all.isConnected) return;
+          all.disabled = false;
+          all.innerHTML = `${icon("download")}${esc(t("전체 내보내기 ({n}개, ZIP)", { n: list.length }))}`;
+          all.onclick = () => shareOrDownload(zip, `underdial-recordings-${fileStamp(Date.now())}.zip`, "Underdial recordings");
+        }, () => { if (all.isConnected) all.textContent = t("전체 내보내기를 만들지 못했습니다."); });
+      }
       body.querySelectorAll("[data-play]").forEach((b) => {
         b.onclick = () => {
           if (audio) { audio.pause(); }
@@ -146,8 +254,7 @@ function openRecordings() {
       body.querySelectorAll("[data-save]").forEach((b) => {
         b.onclick = () => {
           const r = find(b.dataset.save);
-          const stamp = new Date(r.date).toISOString().replace(/[:T]/g, "-").slice(0, 19);
-          shareOrDownload(r.blob, `underdial-${stamp}.wav`, "Underdial recording");
+          shareOrDownload(r.blob, recordingName(r), "Underdial recording");
         };
       });
       body.querySelectorAll("[data-del]").forEach((b) => {

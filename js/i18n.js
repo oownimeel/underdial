@@ -1,13 +1,14 @@
 // Korean is the source language: every string in the code is its Korean text,
 // and `t` looks up English when English is chosen. {name} placeholders are filled from `values`.
 import { EN } from "./i18n-en.js";
+import { STORAGE_NAME } from "./version.js";
 
 let language = "ko";
 const listeners = new Set();
 
 export function initLanguage() {
   let saved = null;
-  try { saved = JSON.parse(localStorage.getItem("underdial.prefs") || "{}").language; } catch { /* private mode */ }
+  try { saved = JSON.parse(localStorage.getItem(`${STORAGE_NAME}.prefs`) || "{}").language; } catch { /* private mode */ }
   language = saved || "ko";
   document.documentElement.lang = language;
 }
